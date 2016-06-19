@@ -25,6 +25,7 @@
 #include <osgEarth/Capabilities>
 #include <osgEarth/DrapeableNode>
 #include <osg/Notify>
+#include <osgDB/ObjectCache>
 
 using namespace osgEarth;
 using namespace osgEarth::Features;
@@ -119,10 +120,13 @@ FeatureModelSource::setFeatureSource( FeatureSource* source )
     }
 }
 
-void 
-FeatureModelSource::initialize(const osgDB::Options* dbOptions)
+void
+FeatureModelSource::initialize(const osgDB::Options* readOptions)
 {
-    ModelSource::initialize( dbOptions );
+    if (readOptions)
+        setReadOptions(readOptions);
+
+    ModelSource::initialize( readOptions );
     
     // the data source from which to pull features:
     if ( _options.featureSource().valid() )
@@ -141,7 +145,7 @@ FeatureModelSource::initialize(const osgDB::Options* dbOptions)
     // initialize the feature source if it exists:
     if ( _features.valid() )
     {
-        _features->initialize( dbOptions );
+        _features->initialize( _readOptions.get() );
 
         // Try to fill the DataExtent list using the FeatureProfile
         const FeatureProfile* featureProfile = _features->getFeatureProfile();
@@ -162,6 +166,20 @@ FeatureModelSource::initialize(const osgDB::Options* dbOptions)
     else
     {
         OE_WARN << LC << "No FeatureSource; nothing will be rendered (" << getName() << ")" << std::endl;
+    }
+}
+
+void
+FeatureModelSource::setReadOptions(const osgDB::Options* readOptions)
+{
+    _readOptions = readOptions ? osg::clone(readOptions) : new osgDB::Options();
+    
+    // for texture atlas support
+    _readOptions->setObjectCacheHint(osgDB::Options::CACHE_IMAGES);
+
+    if (_features.valid())
+    {
+        _features->setReadOptions(_readOptions.get());
     }
 }
 
@@ -196,7 +214,7 @@ FeatureModelSource::createNodeImplementation(const Map*        map,
         map, 
         _options.styles().get(), 
         _features.get(), 
-        _dbOptions.get() );
+        _readOptions.get() );
 
     // Name the session (for debugging purposes)
     session->setName( this->getName() );
@@ -211,6 +229,9 @@ FeatureModelSource::createNodeImplementation(const Map*        map,
        _postMergeOps.get() );
 
     graph->setName( session->getName() );
+
+    if (CacheManager::get(_readOptions.get()))
+        OE_DEBUG << LC << "Found a cache bin in FeatureModelSource\n";
 
     // then run the ops on the staring graph:
     firePostProcessors( graph );

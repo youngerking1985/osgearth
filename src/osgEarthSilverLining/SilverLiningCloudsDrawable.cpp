@@ -19,6 +19,7 @@
 #include <SilverLining.h>
 #include "SilverLiningCloudsDrawable"
 #include "SilverLiningContext"
+#include "SilverLiningContextNode"
 #include <osgEarth/SpatialReference>
 
 #undef  LC
@@ -27,8 +28,9 @@
 using namespace osgEarth::SilverLining;
 
 
-CloudsDrawable::CloudsDrawable(SilverLiningContext* SL) :
-_SL( SL )
+CloudsDrawable::CloudsDrawable(SilverLiningContextNode* contexNode) :
+_SL(contexNode->getSLContext()),
+_contextNode(contexNode)
 {
     // call this to ensure draw() gets called every frame.
     setSupportsDisplayList( false );
@@ -40,10 +42,16 @@ _SL( SL )
 void
 CloudsDrawable::drawImplementation(osg::RenderInfo& renderInfo) const
 {
-    if( _SL->ready() )
-    {
-        osg::State* state = renderInfo.getState();
+	osg::Camera* camera = renderInfo.getCurrentCamera();
+#ifndef SL_USE_CULL_MASK
+	if(_contextNode->getTargetCamera() == camera)
+#endif
+	{
+	if ( _SL->ready())
+	{
+	    osg::State* state = renderInfo.getState();
 
+        // adapt the SL shaders so they can accept OSG uniforms:
         osgEarth::NativeProgramAdapterCollection& adapters = _adapters[ state->getContextID() ]; // thread safe.
         if ( adapters.empty() )
         {
@@ -56,8 +64,11 @@ CloudsDrawable::drawImplementation(osg::RenderInfo& renderInfo) const
             for(int i=0; i<handles.size(); ++i)          
                 adapters.push_back( new osgEarth::NativeProgramAdapter(state, handles[i]) );
         }
-
         adapters.apply( state );
+
+        // invoke the user callback if it exists
+        if (_SL->getCallback())
+            _SL->getCallback()->onDrawClouds(_SL->getAtmosphereWrapper());
 
         renderInfo.getState()->disableAllVertexArrays();
         _SL->getAtmosphere()->DrawObjects( true, true, true );
@@ -65,11 +76,10 @@ CloudsDrawable::drawImplementation(osg::RenderInfo& renderInfo) const
         // Restore the GL state to where it was before.
         state->dirtyAllVertexArrays();
         state->dirtyAllAttributes();
-        //osg::GL2Extensions* api = osg::GL2Extensions::Get(state->getContextID(), true);
-        //api->glUseProgram((GLuint)0);
-        //state->setLastAppliedProgramObject(0L);
+
         state->apply();
     }
+	}
 }
 
 osg::BoundingBox

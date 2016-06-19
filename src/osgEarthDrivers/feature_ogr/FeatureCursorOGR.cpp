@@ -20,6 +20,7 @@
 #include <osgEarthFeatures/OgrUtils>
 #include <osgEarthFeatures/Feature>
 #include <osgEarth/Registry>
+#include <osg/Math>
 #include <algorithm>
 
 #define LC "[FeatureCursorOGR] "
@@ -42,16 +43,22 @@ namespace
     }
 
     /**
-     * Checks to see if all points in the Geometry are valid.
+     * Checks to see if all points in the Geometry are valid, and makes minor repairs
+     * if necessary. Returns false if the geometry cannot be validated.
      */
-    inline bool isGeometryValid( Geometry* geometry )
+    inline bool validateGeometry( Geometry* geometry )
     {        
         if (!geometry) return false;
 
         if (!geometry->isValid()) return false;
 
-        for (Geometry::const_iterator i = geometry->begin(); i != geometry->end(); ++i)
+        for (Geometry::iterator i = geometry->begin(); i != geometry->end(); ++i)
         {
+            // a "NaN" Z value is automatically changed to zero:
+            if (osg::isNaN(i->z()))
+                i->z() = 0.0;
+
+            // then we test for a valid point.
             if (!isPointValid( *i ))
             {
                 return false;
@@ -76,6 +83,7 @@ _spatialFilter    ( 0L ),
 _query            ( query ),
 _chunkSize        ( 500 ),
 _nextHandleToQueue( 0L ),
+_resultSetEndReached(false),
 _profile          ( profile ),
 _filters          ( filters )
 {
@@ -225,12 +233,10 @@ FeatureCursorOGR::readChunk()
     
     OGR_SCOPED_LOCK;
 
-    bool resultSetEndReached = false;
-
-    while( _queue.size() < _chunkSize && !resultSetEndReached )
+    while( _queue.size() < _chunkSize && !_resultSetEndReached )
     {
         FeatureList filterList;
-        while( filterList.size() < _chunkSize && !resultSetEndReached )
+        while( filterList.size() < _chunkSize && !_resultSetEndReached )
         {
             OGRFeatureH handle = OGR_L_GetNextFeature( _resultSetHandle );
             if ( handle )
@@ -239,7 +245,7 @@ FeatureCursorOGR::readChunk()
 
                 if (feature.valid() &&
                     !_source->isBlacklisted( feature->getFID() ) &&
-                    isGeometryValid( feature->getGeometry() ))
+                    validateGeometry( feature->getGeometry() ))
                 {
                     filterList.push_back( feature.release() );
                 }
@@ -247,7 +253,7 @@ FeatureCursorOGR::readChunk()
             }
             else
             {
-                resultSetEndReached = true;
+                _resultSetEndReached = true;
             }
         }
 
@@ -256,6 +262,14 @@ FeatureCursorOGR::readChunk()
         {
             FilterContext cx;
             cx.setProfile( _profile.get() );
+            if (_query.bounds().isSet())
+            {
+                cx.extent() = GeoExtent(_profile->getSRS(), _query.bounds().get());
+            }
+            else
+            {
+                cx.extent() = _profile->getExtent();
+            }
 
             for( FeatureFilterList::const_iterator i = _filters.begin(); i != _filters.end(); ++i )
             {

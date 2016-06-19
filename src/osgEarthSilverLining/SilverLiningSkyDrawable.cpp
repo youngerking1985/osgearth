@@ -19,6 +19,7 @@
 #include <SilverLining.h>
 #include "SilverLiningSkyDrawable"
 #include "SilverLiningContext"
+#include "SilverLiningContextNode"
 #include <osgEarth/SpatialReference>
 
 #define LC "[SilverLining:SkyDrawable] "
@@ -26,8 +27,10 @@
 using namespace osgEarth::SilverLining;
 
 
-SkyDrawable::SkyDrawable(SilverLiningContext* SL) :
-_SL( SL )
+SkyDrawable::SkyDrawable(SilverLiningContextNode* contexNode) :
+_SL(contexNode->getSLContext()),
+_contextNode(contexNode)
+
 {
     // call this to ensure draw() gets called every frame.
     setSupportsDisplayList( false );
@@ -40,19 +43,28 @@ void
 SkyDrawable::drawImplementation(osg::RenderInfo& renderInfo) const
 {
     osg::Camera* camera = renderInfo.getCurrentCamera();
-    if ( camera )
+#ifndef SL_USE_CULL_MASK
+	//Check if this is the target camera
+	if (_contextNode->getTargetCamera() == camera) 
+#endif 
+	{
+	if ( camera)
     {
         renderInfo.getState()->disableAllVertexArrays();
+
         _SL->initialize( renderInfo );
 
+        // convey the sky box size (far plane) to SL:
         double fovy, ar, znear, zfar;
         _SL->setCamera(camera);
-
-        //renderInfo.getCurrentCamera()->setNearFarRatio(.00000001);
-
         camera->getProjectionMatrixAsPerspective(fovy, ar, znear, zfar);
         _SL->setSkyBoxSize( zfar < 100000.0 ? zfar : 100000.0 );
 
+        // invoke the user callback if it exists
+        if (_SL->getCallback())
+            _SL->getCallback()->onDrawSky(_SL->getAtmosphereWrapper());
+
+        // draw the sky.
         _SL->getAtmosphere()->DrawSky(
             true,
             _SL->getSRS()->isGeographic(),
@@ -76,6 +88,7 @@ SkyDrawable::drawImplementation(osg::RenderInfo& renderInfo) const
 
         renderInfo.getState()->apply();
     }
+	}
 }
 
 osg::BoundingBox

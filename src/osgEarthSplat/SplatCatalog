@@ -57,7 +57,8 @@ namespace osgEarth { namespace Splat
      */
     struct OSGEARTHSPLAT_EXPORT SplatRangeData
     {
-        optional<float>           _minRange;
+        optional<unsigned>        _maxLOD;
+        //optional<float>           _minRange;
         optional<URI>             _imageURI;
         optional<URI>             _modelURI;
         optional<int>             _modelCount;
@@ -89,22 +90,15 @@ namespace osgEarth { namespace Splat
     };
     
     typedef osgEarth::fast_map<std::string, SplatClass> SplatClassMap;
-    
-    // Associates a selector expression that, if it evaluates to true, will
-    // select the specified splat texture
-    typedef std::pair<std::string /*expression*/, SplatRangeData> SplatSelector;
-
-    // Vector of selectors
-    typedef std::vector<SplatSelector> SplatSelectorVector;
-
-    // Maps splat class names to texture data renderers
-    typedef osgEarth::fast_map<std::string /*className*/, SplatSelectorVector> SplatLUT;
+  
+    typedef osgEarth::fast_map<std::string /*className*/, SplatRangeDataVector> SplatLUT;
 
     // Defines the splatting texture and associated lookup table.
     struct SplatTextureDef
     {
         osg::ref_ptr<osg::Texture2DArray> _texture;
         SplatLUT                          _splatLUT;
+        osg::ref_ptr<osg::Texture>        _splatLUTBuffer;
         std::string                       _samplingFunction;
     };
     

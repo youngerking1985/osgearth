@@ -30,7 +30,6 @@ DriverConfigOptions( options ),
 _tileSize( 17 ),
 _verticalScale( 1.0f ),
 _verticalOffset( 0.0f ),
-_heightFieldSampleRatio( 1.0f ),
 _minTileRangeFactor( 7.0 ),
 _combineLayers( true ),
 _maxLOD( 23 ),
@@ -59,15 +58,11 @@ TerrainOptions::getConfig() const
     Config conf = DriverConfigOptions::getConfig();
     conf.key() = "terrain";
     
-    if ( _heightFieldSampleRatio.isSetTo( 0.0f ) )
-        conf.update( "sample_ratio", "auto" );
-    else
-        conf.updateIfSet( "sample_ratio", _heightFieldSampleRatio );
-
     conf.updateIfSet( "tile_size", _tileSize );
     conf.updateIfSet( "vertical_scale", _verticalScale );
     conf.updateIfSet( "vertical_offset", _verticalOffset );
-    conf.updateIfSet( "min_tile_range_factor", _minTileRangeFactor );    
+    conf.updateIfSet( "min_tile_range_factor", _minTileRangeFactor );
+    conf.updateIfSet( "range_factor", _minTileRangeFactor );  
     conf.updateIfSet( "max_lod", _maxLOD );
     conf.updateIfSet( "min_lod", _minLOD );
     conf.updateIfSet( "first_lod", _firstLOD );
@@ -82,6 +77,8 @@ TerrainOptions::getConfig() const
     conf.updateIfSet( "gpu_tessellation", _gpuTessellation );
     conf.updateIfSet( "debug", _debug );
     conf.updateIfSet( "bin_number", _binNumber );
+    conf.updateIfSet( "min_expiry_time", _minExpiryTime);
+    conf.updateIfSet( "min_expiry_frames", _minExpiryFrames);
 
     //Save the filter settings
 	conf.updateIfSet("mag_filter","LINEAR",                _magFilter,osg::Texture::LINEAR);
@@ -103,15 +100,11 @@ TerrainOptions::getConfig() const
 void
 TerrainOptions::fromConfig( const Config& conf )
 {
-    if ( conf.value("sample_ratio") == "auto" )
-        _heightFieldSampleRatio = 0.0f;
-    else
-        conf.getIfSet( "sample_ratio", _heightFieldSampleRatio );
-
     conf.getIfSet( "tile_size", _tileSize );
     conf.getIfSet( "vertical_scale", _verticalScale );
     conf.getIfSet( "vertical_offset", _verticalOffset );
-    conf.getIfSet( "min_tile_range_factor", _minTileRangeFactor );    
+    conf.getIfSet( "min_tile_range_factor", _minTileRangeFactor );   
+    conf.getIfSet( "range_factor", _minTileRangeFactor );   
     conf.getIfSet( "max_lod", _maxLOD ); conf.getIfSet( "max_level", _maxLOD );
     conf.getIfSet( "min_lod", _minLOD ); conf.getIfSet( "min_level", _minLOD );
     conf.getIfSet( "first_lod", _firstLOD ); conf.getIfSet( "first_level", _firstLOD );
@@ -126,6 +119,8 @@ TerrainOptions::fromConfig( const Config& conf )
     conf.getIfSet( "gpu_tessellation", _gpuTessellation );
     conf.getIfSet( "debug", _debug );
     conf.getIfSet( "bin_number", _binNumber );
+    conf.getIfSet( "min_expiry_time", _minExpiryTime);
+    conf.getIfSet( "min_expiry_frames", _minExpiryFrames);
 
     //Load the filter settings
 	conf.getIfSet("mag_filter","LINEAR",                _magFilter,osg::Texture::LINEAR);

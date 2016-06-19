@@ -71,6 +71,7 @@ _textureIndex( -1 )
 SplatRangeData::SplatRangeData(const Config& conf) :
 _textureIndex( -1 )
 {
+    conf.getIfSet("max_lod",    _maxLOD);
     conf.getIfSet("image",      _imageURI);
     conf.getIfSet("model",      _modelURI);
     conf.getIfSet("modelCount", _modelCount);
@@ -84,6 +85,7 @@ Config
 SplatRangeData::getConfig() const
 {
     Config conf;
+    conf.addIfSet("max_lod",    _maxLOD);
     conf.addIfSet("image",      _imageURI);
     conf.addIfSet("model",      _modelURI);
     conf.addIfSet("modelCount", _modelCount);
@@ -107,8 +109,10 @@ SplatClass::SplatClass(const Config& conf)
 
     if ( conf.hasChild("range") )
     {
+        ConfigSet children = conf.children("range");
+
         // read the data definitions in order:
-        for(ConfigSet::const_iterator i = conf.children().begin(); i != conf.children().end(); ++i)
+        for(ConfigSet::const_iterator i = children.begin(); i != children.end(); ++i)
         {
             if ( !i->empty() )
             {
@@ -202,11 +206,29 @@ namespace
                 // In the future perhaps we can resize/convert instead.
                 if ( !ImageUtils::textureArrayCompatible(result.getImage(), firstImage) )
                 {
-                    OE_WARN << LC << "Image " << uri.base()
-                        << " was found, but cannot be used because it is not compatible with "
-                        << "other splat images (same dimensions, pixel format, etc.)\n";
+                    osg::ref_ptr<osg::Image> conv = ImageUtils::convert(result.getImage(), firstImage->getPixelFormat(), firstImage->getDataType());
 
-                    return 0L;
+                    if ( conv->s() != firstImage->s() || conv->t() != firstImage->t() )
+                    {
+                        osg::ref_ptr<osg::Image> conv2;
+                        if ( ImageUtils::resizeImage(conv.get(), firstImage->s(), firstImage->t(), conv2) )
+                        {
+                            conv = conv2.get();
+                        }
+                    }
+
+                    if ( ImageUtils::textureArrayCompatible(conv.get(), firstImage) )
+                    {
+                        conv->setInternalTextureFormat( firstImage->getInternalTextureFormat() );
+                        return conv.release();
+                    }
+                    else
+                    {
+                        OE_WARN << LC << "Image " << uri.base()
+                            << " was found, but cannot be used because it is not compatible with "
+                            << "other splat images (same dimensions, pixel format, etc.)\n";
+                        return 0L;
+                    }
                 }
             }
         }
@@ -308,28 +330,7 @@ SplatCatalog::createSplatTextureDef(const osgDB::Options* dbOptions,
     for(SplatClassMap::const_iterator i = _classes.begin(); i != _classes.end(); ++i)
     {
         const SplatClass& c = i->second;
-
-        // selectors for this class (ordered):
-        SplatSelectorVector selectors;
-
-        // check each data element:
-        for(SplatRangeDataVector::const_iterator range = c._ranges.begin(); range != c._ranges.end(); ++range)
-        {
-            // If the primary image exists, look up its index and add it to the selector set.
-            ImageIndexTable::const_iterator k = imageIndices.find( range->_imageURI.get() );
-            if ( k != imageIndices.end() )
-            {
-                std::string expression;
-                if ( range->_minRange.isSet() )
-                {
-                    expression = Stringify()
-                        << "env.range >= float(" << range->_minRange.get() << ")";
-                }
-
-                // insert into the lookup table.
-                out._splatLUT[c._name].push_back( SplatSelector(expression, *range) );
-            }
-        }
+        out._splatLUT[c._name] = c._ranges;
     }
 
     // Create the texture array.

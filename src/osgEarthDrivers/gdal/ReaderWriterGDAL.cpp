@@ -676,25 +676,15 @@ public:
     {
         GDAL_SCOPED_LOCK;
 
-        Cache* cache = 0;
-
         _dbOptions = Registry::instance()->cloneOrCreateOptions( dbOptions );
-
         if ( _dbOptions.valid() )
         {
-            // Set up a Custom caching bin for this TileSource
-            cache = Cache::get( _dbOptions.get() );
-            if ( cache )
+            // Set up a custom cache bin
+            CacheManager* cacheManager = CacheManager::get(dbOptions);
+            if (cacheManager && cacheManager->getCache())
             {
-                Config optionsConf = _options.getConfig();
-
-                std::string binId = Stringify() << std::hex << hashString(optionsConf.toJSON());
-                _cacheBin = cache->addBin( binId );
-
-                if ( _cacheBin.valid() )
-                {
-                    _cacheBin->apply( _dbOptions.get() );
-                }
+                std::string binId = Stringify() << std::hex << hashString(_options.getConfig().toJSON());
+                _cacheBin = cacheManager->getCache()->addBin(binId);
             }
         }
 
@@ -780,7 +770,7 @@ public:
                 //Try to load the VRT file from the cache so we don't have to build it each time.
                 if (_cacheBin.valid())
                 {                
-                    ReadResult result = _cacheBin->readString( vrtKey);
+                    ReadResult result = _cacheBin->readString( vrtKey, 0L);
                     if (result.succeeded())
                     {
                         _srcDS = (GDALDataset*)GDALOpen(result.getString().c_str(), GA_ReadOnly );
@@ -824,7 +814,7 @@ public:
                                     buf << input.rdbuf();
                                     std::string vrtContents = buf.str();
                                     osg::ref_ptr< StringObject > strObject = new StringObject( vrtContents );
-                                    _cacheBin->write( vrtKey, strObject.get() );
+                                    _cacheBin->write(vrtKey, strObject.get(), 0L);
                                 }
                             }
                             if (osgDB::fileExists( vrtFile ) )

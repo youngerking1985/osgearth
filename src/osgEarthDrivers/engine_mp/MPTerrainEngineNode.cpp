@@ -652,6 +652,7 @@ MPTerrainEngineNode::dirtyTerrain()
         OE_INFO << LC << "Creating " << keys.size() << " root keys.." << std::endl;
 
         TilePagedLOD* root = new TilePagedLOD( _uid, _liveTiles, _deadTiles );
+        root->setRangeFactor(_terrainOptions.minTileRangeFactor().get());
         _terrain->addChild( root );
 
         osg::ref_ptr<osgDB::Options> dbOptions = Registry::instance()->cloneOrCreateOptions();
@@ -810,7 +811,8 @@ MPTerrainEngineNode::createTile( const TileKey& key )
     const osgEarth::ElevationInterpolation& interp = _update_mapf->getMapOptions().elevationInterpolation().get();
 
     // Request a heightfield from the map, falling back on lower resolution tiles
-    osg::ref_ptr<osg::HeightField> hf;    
+    int tileSize = _terrainOptions.tileSize().get();    
+    osg::ref_ptr<osg::HeightField> hf = HeightFieldUtils::createReferenceHeightField( key.getExtent(), tileSize, tileSize );
 
     TileKey sampleKey = key;
     bool populated = false;

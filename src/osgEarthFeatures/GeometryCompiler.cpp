@@ -66,12 +66,12 @@ _clustering            ( false ),
 _instancing            ( false ),
 _ignoreAlt             ( false ),
 _useVertexBufferObjects( true ),
-_useTextureArrays      ( true ),
 _shaderPolicy          ( SHADERPOLICY_GENERATE ),
 _geoInterp             ( GEOINTERP_GREAT_CIRCLE ),
 _optimizeStateSharing  ( true ),
 _optimize              ( false ),
-_validate              ( false )
+_validate              ( false ),
+_maxPolyTilingAngle    ( 45.0f )
 {
    //nop
 }
@@ -86,12 +86,12 @@ _clustering            ( s_defaults.clustering().value() ),
 _instancing            ( s_defaults.instancing().value() ),
 _ignoreAlt             ( s_defaults.ignoreAltitudeSymbol().value() ),
 _useVertexBufferObjects( s_defaults.useVertexBufferObjects().value() ),
-_useTextureArrays      ( s_defaults.useTextureArrays().value() ),
 _shaderPolicy          ( s_defaults.shaderPolicy().value() ),
 _geoInterp             ( s_defaults.geoInterp().value() ),
 _optimizeStateSharing  ( s_defaults.optimizeStateSharing().value() ),
 _optimize              ( s_defaults.optimize().value() ),
-_validate              ( s_defaults.validate().value() )
+_validate              ( s_defaults.validate().value() ),
+_maxPolyTilingAngle    ( s_defaults.maxPolygonTilingAngle().value() )
 {
     fromConfig(_conf);
 }
@@ -108,10 +108,10 @@ GeometryCompilerOptions::fromConfig( const Config& conf )
     conf.getIfSet   ( "geo_interpolation", "great_circle", _geoInterp, GEOINTERP_GREAT_CIRCLE );
     conf.getIfSet   ( "geo_interpolation", "rhumb_line",   _geoInterp, GEOINTERP_RHUMB_LINE );
     conf.getIfSet   ( "use_vbo", _useVertexBufferObjects);
-    conf.getIfSet   ( "use_texture_arrays", _useTextureArrays );
     conf.getIfSet   ( "optimize_state_sharing", _optimizeStateSharing );
     conf.getIfSet   ( "optimize", _optimize );
     conf.getIfSet   ( "validate", _validate );
+    conf.getIfSet   ( "max_polygon_tiling_angle", _maxPolyTilingAngle );
 
     conf.getIfSet( "shader_policy", "disable",  _shaderPolicy, SHADERPOLICY_DISABLE );
     conf.getIfSet( "shader_policy", "inherit",  _shaderPolicy, SHADERPOLICY_INHERIT );
@@ -131,10 +131,10 @@ GeometryCompilerOptions::getConfig() const
     conf.addIfSet   ( "geo_interpolation", "great_circle", _geoInterp, GEOINTERP_GREAT_CIRCLE );
     conf.addIfSet   ( "geo_interpolation", "rhumb_line",   _geoInterp, GEOINTERP_RHUMB_LINE );
     conf.addIfSet   ( "use_vbo", _useVertexBufferObjects);
-    conf.addIfSet   ( "use_texture_arrays", _useTextureArrays );
     conf.addIfSet   ( "optimize_state_sharing", _optimizeStateSharing );
     conf.addIfSet   ( "optimize", _optimize );
     conf.addIfSet   ( "validate", _validate );
+    conf.addIfSet   ( "max_polygon_tiling_angle", _maxPolyTilingAngle );
 
     conf.addIfSet( "shader_policy", "disable",  _shaderPolicy, SHADERPOLICY_DISABLE );
     conf.addIfSet( "shader_policy", "inherit",  _shaderPolicy, SHADERPOLICY_INHERIT );
@@ -491,6 +491,7 @@ GeometryCompiler::compile(FeatureList&          workingSet,
         BuildGeometryFilter filter( style );
         filter.maxGranularity() = *_options.maxGranularity();
         filter.geoInterp()      = *_options.geoInterp();
+        filter.maxPolygonTilingAngle() = *_options.maxPolygonTilingAngle();
 
         if ( _options.featureName().isSet() )
             filter.featureName() = *_options.featureName();
@@ -574,13 +575,18 @@ GeometryCompiler::compile(FeatureList&          workingSet,
             osgUtil::Optimizer::REMOVE_REDUNDANT_NODES |
             osgUtil::Optimizer::COMBINE_ADJACENT_LODS |
             osgUtil::Optimizer::SHARE_DUPLICATE_STATE |
-            osgUtil::Optimizer::MERGE_GEOMETRY |
+            //osgUtil::Optimizer::MERGE_GEOMETRY |
             osgUtil::Optimizer::CHECK_GEOMETRY |
             osgUtil::Optimizer::MERGE_GEODES |
             osgUtil::Optimizer::STATIC_OBJECT_DETECTION;
 
         osgUtil::Optimizer opt;
         opt.optimize(resultGroup.get(), optimizations);
+
+        osgUtil::Optimizer::MergeGeometryVisitor mg;
+        mg.setTargetMaximumNumberOfVertices(65536);
+        resultGroup->accept(mg);
+
         OE_DEBUG << LC << "optimize complete" << std::endl;
 
         if ( trackHistory ) history.push_back( "optimize" );

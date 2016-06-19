@@ -30,6 +30,7 @@
 #include <osgEarth/TraversalData>
 #include <osgEarth/Shadowing>
 #include <osgEarth/Utils>
+#include <osgEarth/TraversalData>
 
 #include <osg/Uniform>
 #include <osg/ComputeBoundsVisitor>
@@ -63,7 +64,11 @@ namespace
 
 TileNode::TileNode() : 
 _dirty        ( false ),
-_childrenReady( false )
+_childrenReady( false ),
+_minExpiryTime( 0.0 ),
+_minExpiryFrames( 0 ),
+_lastTraversalTime(0.0),
+_lastTraversalFrame(0.0)
 {
     osg::StateSet* stateSet = getOrCreateStateSet();
 
@@ -168,7 +173,11 @@ TileNode::computeBound() const
 bool
 TileNode::isDormant(const osg::FrameStamp* fs) const
 {
-    return fs && fs->getFrameNumber() - _lastTraversalFrame > 2u;
+    bool dormant = 
+           fs &&
+           fs->getFrameNumber() - _lastTraversalFrame > _minExpiryFrames &&
+           fs->getReferenceTime() - _lastTraversalTime > _minExpiryTime;
+    return dormant;
 }
 
 void
@@ -319,7 +328,7 @@ TileNode::cull_stealth(osgUtil::CullVisitor* cv)
 {
     bool visible = false;
 
-    EngineContext* context = static_cast<EngineContext*>( cv->getUserData() );
+    EngineContext* context = VisitorData::fetch<EngineContext>(*cv, ENGINE_CONTEXT_TAG); //static_cast<EngineContext*>( cv->getUserData() );
 
     // Shows all culled tiles, good for testing culling
     unsigned frame = cv->getFrameStamp()->getFrameNumber();
@@ -343,7 +352,7 @@ TileNode::cull_stealth(osgUtil::CullVisitor* cv)
 bool
 TileNode::cull(osgUtil::CullVisitor* cv)
 {
-    EngineContext* context = static_cast<EngineContext*>( cv->getUserData() );
+    EngineContext* context = VisitorData::fetch<EngineContext>(*cv, ENGINE_CONTEXT_TAG);
     const SelectionInfo& selectionInfo = context->getSelectionInfo();
 
     // Horizon check the surface first:
@@ -476,6 +485,7 @@ TileNode::accept_cull(osgUtil::CullVisitor* cv)
 
     // update the timestamp so this tile doesn't become dormant.
     _lastTraversalFrame.exchange( cv->getFrameStamp()->getFrameNumber() );
+    _lastTraversalTime = cv->getFrameStamp()->getReferenceTime();
 
     if ( !cv->isCulled(*this) )
     {
@@ -555,6 +565,14 @@ TileNode::createChildren(EngineContext* context)
     for(unsigned quadrant=0; quadrant<4; ++quadrant)
     {
         TileNode* node = new TileNode();
+        if (context->getOptions().minExpiryFrames().isSet())
+        {
+            node->setMinimumExpiryFrames( *context->getOptions().minExpiryFrames() );
+        }
+        if (context->getOptions().minExpiryTime().isSet())
+        {         
+            node->setMinimumExpiryTime( *context->getOptions().minExpiryTime() );
+        }
 
         // Build the surface geometry:
         node->create( getTileKey().createChildKey(quadrant), context );
@@ -681,7 +699,7 @@ void
 TileNode::load(osg::NodeVisitor& nv)
 {
     // Access the context:
-    EngineContext* context = static_cast<EngineContext*>( nv.getUserData() );
+    EngineContext* context = VisitorData::fetch<EngineContext>(nv, ENGINE_CONTEXT_TAG);
 
     // Create a new load request on demand:
     if ( !_loadRequest.valid() )

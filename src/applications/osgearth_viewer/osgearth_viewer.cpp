@@ -25,6 +25,9 @@
 #include <osgEarthUtil/EarthManipulator>
 #include <osgEarthUtil/ExampleResources>
 
+#include <osgEarth/Cache>
+#include <osgEarthDrivers/cache_filesystem/FileSystemCache>
+
 #define LC "[viewer] "
 
 using namespace osgEarth;
@@ -56,7 +59,7 @@ main(int argc, char** argv)
     osgViewer::Viewer viewer(arguments);
 
     // Tell the database pager to not modify the unref settings
-    viewer.getDatabasePager()->setUnrefImageDataAfterApplyPolicy( false, false );
+    viewer.getDatabasePager()->setUnrefImageDataAfterApplyPolicy( true, false );
 
     // thread-safe initialization of the OSG wrapper manager. Calling this here
     // prevents the "unsupported wrapper" messages from OSG
@@ -81,14 +84,11 @@ main(int argc, char** argv)
 
     // load an earth file, and support all or our example command-line options
     // and earth file <external> tags    
-    osg::Node* node = MapNodeHelper().load( arguments, &viewer );
+    osg::Node* node = MapNodeHelper().load(arguments, &viewer);
     if ( node )
     {
         viewer.setSceneData( node );
-        while(!viewer.done())
-        {
-            viewer.frame();
-        }
+        viewer.run();
     }
     else
     {

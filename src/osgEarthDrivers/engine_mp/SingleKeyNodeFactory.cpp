@@ -117,6 +117,26 @@ SingleKeyNodeFactory::createTile(TileModel*        model,
         plod->setCenter  ( bs.center() );
         plod->addChild   ( tileNode );
         plod->setFileName( 1, Stringify() << tileNode->getKey().str() << "." << _engine->getUID() << ".osgearth_engine_mp_tile" );
+        
+        double rangeFactor = _options.minTileRangeFactor().get();
+        if (_options.adaptivePolarRangeFactor() == true)
+        {
+            double lat = model->_tileKey.getExtent().yMin() < 0 ? -model->_tileKey.getExtent().yMax() : model->_tileKey.getExtent().yMin();
+            double latRad = osg::DegreesToRadians(lat);
+            rangeFactor -= (rangeFactor - 1.0)*sin(latRad)*sin(latRad);
+        }
+        plod->setRangeFactor(rangeFactor);
+
+        // Setup expiration.
+        if (_options.minExpiryFrames().isSet())
+        {
+            plod->setMinimumExpiryFrames(1, *_options.minExpiryFrames());
+        }
+        
+        if (_options.minExpiryTime().isSet())
+        {         
+            plod->setMinimumExpiryTime(1, *_options.minExpiryTime());
+        }      
 
         if ( _options.rangeMode().value() == osg::LOD::DISTANCE_FROM_EYE_POINT )
         {
@@ -148,7 +168,8 @@ SingleKeyNodeFactory::createTile(TileModel*        model,
                 radius = (ur - ll).length() / 2.0;
             }
           
-            float minRange = (float)(radius * _options.minTileRangeFactor().value());
+            //float minRange = (float)(radius * _options.minTileRangeFactor().value());
+            float minRange = radius;
 
             plod->setRange( 0, minRange, FLT_MAX );
             plod->setRange( 1, 0, minRange );

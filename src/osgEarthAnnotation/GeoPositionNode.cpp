@@ -28,7 +28,6 @@
 #include <osgEarth/CullingUtils>
 #include <osgEarth/MapNode>
 #include <osgEarth/TerrainEngineNode>
-#include <osgEarth/Decluttering>
 
 #include <osgText/Text>
 #include <osg/ComputeBoundsVisitor>
@@ -91,9 +90,10 @@ GeoPositionNode::setMapNode( MapNode* mapNode )
     {
         AnnotationNode::setMapNode( mapNode );
 
+        bool occlusionCullingRequested = _occlusionCullingRequested;
         // the occlusion culler depends on the mapnode, so re-initialize it:
         setOcclusionCulling( false );
-        if ( _occlusionCullingRequested )
+        if ( occlusionCullingRequested )
         {
             setOcclusionCulling( true );
         }
@@ -197,13 +197,19 @@ void GeoPositionNode::setOcclusionCullingMaxAltitude( double occlusionCullingMax
 }
 
 
-
 GeoPositionNode::GeoPositionNode(MapNode* mapNode, const Config& conf) :
 AnnotationNode          ( conf ),
 _horizonCullingRequested( true )
 {
     init();
     GeoPositionNode::setMapNode( mapNode );
+    setConfig(conf);
+}
+
+void
+GeoPositionNode::setConfig(const Config& conf)
+{
+    //AnnotationNode::setConfig(conf);
 
     if ( conf.hasChild( "position" ) )
     {

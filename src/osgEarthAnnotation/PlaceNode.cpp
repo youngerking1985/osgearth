@@ -23,12 +23,13 @@
 #include <osgEarthAnnotation/PlaceNode>
 #include <osgEarthAnnotation/AnnotationUtils>
 #include <osgEarthAnnotation/AnnotationRegistry>
+#include <osgEarthAnnotation/BboxDrawable>
 #include <osgEarthFeatures/BuildTextFilter>
 #include <osgEarthFeatures/LabelSource>
 #include <osgEarth/Utils>
 #include <osgEarth/Registry>
 #include <osgEarth/ShaderGenerator>
-#include <osgEarth/Decluttering>
+#include <osgEarth/GeoMath>
 
 #include <osg/Depth>
 #include <osgText/Text>
@@ -51,7 +52,9 @@ GeoPositionNode( mapNode, position ),
 _image   ( image ),
 _text    ( text ),
 _style   ( style ),
-_geode   ( 0L )
+_geode            ( 0L ),
+_labelRotationRad ( 0. ),
+_followFixedCourse( false )
 {
     init();
 }
@@ -64,7 +67,9 @@ PlaceNode::PlaceNode(MapNode*           mapNode,
 GeoPositionNode( mapNode, position ),
 _text    ( text ),
 _style   ( style ),
-_geode   ( 0L )
+_geode            ( 0L ),
+_labelRotationRad ( 0. ),
+_followFixedCourse( false )
 {
     init();
 }
@@ -75,7 +80,9 @@ PlaceNode::PlaceNode(MapNode*              mapNode,
                      const osgDB::Options* dbOptions ) :
 GeoPositionNode ( mapNode, position ),
 _style    ( style ),
-_dbOptions( dbOptions )
+_dbOptions        ( dbOptions ),
+_labelRotationRad ( 0. ),
+_followFixedCourse( false )
 {
     init();
 }
@@ -83,7 +90,7 @@ _dbOptions( dbOptions )
 void
 PlaceNode::init()
 {
-    Decluttering::setEnabled( this->getOrCreateStateSet(), true );
+    ScreenSpaceLayout::activate( this->getOrCreateStateSet() );
 
     osgEarth::clearChildren( getPositionAttitudeTransform() );
 
@@ -95,10 +102,42 @@ PlaceNode::init()
 
     osg::Drawable* text = 0L;
 
+    const TextSymbol* symbol = _style.get<TextSymbol>();
+
     // If there's no explicit text, look to the text symbol for content.
-    if ( _text.empty() && _style.has<TextSymbol>() )
+    if ( _text.empty() && symbol )
     {
-        _text = _style.get<TextSymbol>()->content()->eval();
+        _text = symbol->content()->eval();
+    }
+
+    // Handle the rotation if any
+    if ( symbol && symbol->onScreenRotation().isSet() )
+    {
+        _labelRotationRad = osg::DegreesToRadians(symbol->onScreenRotation()->eval());
+    }
+
+    // In case of a label must follow a course on map, we project a point from the position
+    // with the given bearing. Then during culling phase we compute both points on the screen
+    // and then we can deduce the screen rotation
+    // may be optimized...
+    else if ( symbol && symbol->geographicCourse().isSet() )
+    {
+        _followFixedCourse = true;
+        _labelRotationRad = osg::DegreesToRadians ( symbol->geographicCourse()->eval() );
+
+        double latRad;
+        double longRad;
+        GeoMath::destination( osg::DegreesToRadians( getPosition().y() ),
+                              osg::DegreesToRadians( getPosition().x() ),
+                              _labelRotationRad,
+                              2500.,
+                              latRad,
+                              longRad );
+        _geoPointProj.set ( osgEarth::SpatialReference::get("wgs84"),
+                                       osg::RadiansToDegrees(longRad),
+                                       osg::RadiansToDegrees(latRad),
+                                       0,
+                                       osgEarth::ALTMODE_ABSOLUTE );
     }
 
     osg::ref_ptr<const InstanceSymbol> instance = _style.get<InstanceSymbol>();
@@ -203,7 +242,7 @@ PlaceNode::init()
         if ( imageGeom )
         {
             _geode->addDrawable( imageGeom );
-            imageBox = imageGeom->getBoundingBox();
+            imageBox = osgEarth::Utils::getBoundingBox( imageGeom );
         }    
     }
 
@@ -213,11 +252,18 @@ PlaceNode::init()
         if ( !textSymbol->alignment().isSet() )
             textSymbol->alignment() = textSymbol->ALIGN_LEFT_CENTER;
     }
-    
+
     text = AnnotationUtils::createTextDrawable(
             _text,
             _style.get<TextSymbol>(),
             imageBox );
+
+    const BBoxSymbol* bboxsymbol = _style.get<BBoxSymbol>();
+    if ( bboxsymbol && text )
+    {
+        osg::Drawable* bboxGeom = new BboxDrawable( osgEarth::Utils::getBoundingBox(text), *bboxsymbol );
+        _geode->addDrawable(bboxGeom);
+    }
 
     if ( text )
         _geode->addDrawable( text );
@@ -243,18 +289,37 @@ PlaceNode::init()
 
     if ( _dynamic )
         setDynamic( _dynamic );
+
+    updateLayoutData();
 }
 
 void
 PlaceNode::setPriority(float value)
 {
     GeoPositionNode::setPriority(value);
+    updateLayoutData();
+}
+
+void
+PlaceNode::updateLayoutData()
+{
+    if (!_dataLayout.valid())
+    {
+        _dataLayout = new ScreenSpaceLayoutData();
+    }
 
     // re-apply annotation drawable-level stuff as neccesary.
-    for(unsigned i=0; i<_geode->getNumDrawables(); ++i)
+    for (unsigned i = 0; i < _geode->getNumDrawables(); ++i)
     {
-        //_geode->getDrawable(i)->setUserData( this );
-        _geode->getDrawable(i)->setUserData( new DeclutteringData(getPriority()) );
+        _geode->getDrawable(i)->setUserData(_dataLayout.get());
+    }
+
+    _dataLayout->setPriority(getPriority());
+    const TextSymbol* ts = getStyle().get<TextSymbol>();
+    if (ts)
+    {
+        _dataLayout->setPixelOffset(ts->pixelOffset().get());
+        _dataLayout->setRotationRad(_labelRotationRad);
     }
 }
 
@@ -318,7 +383,41 @@ PlaceNode::setDynamic( bool value )
     }
 }
 
+void
+PlaceNode::traverse(osg::NodeVisitor &nv)
+{
+    if(_followFixedCourse)
+    {
+        osgUtil::CullVisitor* cv = NULL;
+        if ( nv.getVisitorType() == osg::NodeVisitor::CULL_VISITOR )
+        {
+            cv = Culling::asCullVisitor(nv);
+            osg::Camera* camera = cv->getCurrentCamera();
 
+            osg::Matrix matrix;
+            matrix.postMult(camera->getViewMatrix());
+            matrix.postMult(camera->getProjectionMatrix());
+            if (camera->getViewport())
+                matrix.postMult(camera->getViewport()->computeWindowMatrix());
+
+            GeoPoint pos( osgEarth::SpatialReference::get("wgs84"),
+                          getPosition().x(),
+                          getPosition().y(),
+                          0,
+                          osgEarth::ALTMODE_ABSOLUTE );
+
+            osg::Vec3d refOnWorld; pos.toWorld(refOnWorld);
+            osg::Vec3d projOnWorld; _geoPointProj.toWorld(projOnWorld);
+            osg::Vec3d refOnScreen = refOnWorld * matrix;
+            osg::Vec3d projOnScreen = projOnWorld * matrix;
+            projOnScreen -= refOnScreen;
+            _labelRotationRad = atan2 (projOnScreen.y(), projOnScreen.x());
+            if (_dataLayout.valid())
+                _dataLayout->setRotationRad(_labelRotationRad);
+        }
+    }
+    GeoPositionNode::traverse(nv);
+}
 
 //-------------------------------------------------------------------
 
@@ -329,8 +428,30 @@ PlaceNode::PlaceNode(MapNode*              mapNode,
                      const Config&         conf,
                      const osgDB::Options* dbOptions) :
 GeoPositionNode ( mapNode, conf ),
-_dbOptions( dbOptions )
+_dbOptions( dbOptions ),
+_labelRotationRad ( 0. ),
+_followFixedCourse( false )
 {
+    conf.getObjIfSet( "style",  _style );
+    conf.getIfSet   ( "text",   _text );
+
+    optional<URI> imageURI;
+    conf.getIfSet( "icon", imageURI );
+    if ( imageURI.isSet() )
+    {
+        _image = imageURI->getImage();
+        if ( _image.valid() )
+            _image->setFileName( imageURI->base() );
+    }
+
+    init();
+}
+
+void
+PlaceNode::setConfig(const Config& conf)
+{
+    GeoPositionNode::setConfig(conf);
+
     conf.getObjIfSet( "style",  _style );
     conf.getIfSet   ( "text",   _text );
 
@@ -360,4 +481,46 @@ PlaceNode::getConfig() const
     }
 
     return conf;
+}
+
+
+#undef  LC
+#define LC "[PlaceNode Serializer] "
+
+#include <osgDB/ObjectWrapper>
+#include <osgDB/InputStream>
+#include <osgDB/OutputStream>
+
+namespace
+{
+    // functions
+    static bool checkConfig(const osgEarth::Annotation::PlaceNode& node)
+    {
+        return true;
+    }
+
+    static bool readConfig(osgDB::InputStream& is, osgEarth::Annotation::PlaceNode& node)
+    {
+        std::string json;
+        is >> json;
+        Config conf;
+        conf.fromJSON(json);
+        node.setConfig(conf);
+        return true;
+    }
+
+    static bool writeConfig(osgDB::OutputStream& os, const osgEarth::Annotation::PlaceNode& node)
+    {
+        os << node.getConfig().toJSON(false) << std::endl;
+        return true;
+    }
+
+    REGISTER_OBJECT_WRAPPER(
+        PlaceNode,
+        new osgEarth::Annotation::PlaceNode,
+        osgEarth::Annotation::PlaceNode,
+        "osg::Object osg::Node osg::Group osgEarth::Annotation::AnnotationNode osgEarth::Annotation::GeoPositionNode osgEarth::Annotation::PlaceNode")
+    {
+        ADD_USER_SERIALIZER(Config);
+    }
 }

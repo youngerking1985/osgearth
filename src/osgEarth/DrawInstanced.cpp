@@ -418,6 +418,9 @@ DrawInstanced::convertGraphToUseDrawInstanced( osg::Group* parent )
         posTBO->setInternalFormat( GL_RGBA32F_ARB );
         posTBO->setUnRefImageDataAfterApply( true );
 
+        // so the TBO will serialize properly.
+        image->setWriteHint(osg::Image::STORE_INLINE);
+
         // Tell the SG to skip the positioning texture.
         ShaderGenerator::setIgnoreHint(posTBO, true);
 
@@ -429,6 +432,8 @@ DrawInstanced::convertGraphToUseDrawInstanced( osg::Group* parent )
         instanceGroup->addChild( node );
 
         parent->addChild( instanceGroup );
+
+        //OE_INFO << LC << "ConvertToDI: instances=" << numInstancesToStore << "\n";
     }
 
     return true;

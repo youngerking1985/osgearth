@@ -9,6 +9,12 @@ MARK_AS_ADVANCED(CURL_IS_STATIC)
 
 ADD_DEFINITIONS(-DTIXML_USE_STL)
 
+# Builds the HTTPClient with WIN_INET instead of CURL
+OPTION(OSGEARTH_USE_WININET_FOR_HTTP "Whether to use the WinInet library for HTTP requests (instead of cURL)" OFF)
+if (OSGEARTH_USE_WININET_FOR_HTTP)
+    ADD_DEFINITIONS(-DOSGEARTH_USE_WININET_FOR_HTTP)
+endif (OSGEARTH_USE_WININET_FOR_HTTP)
+
 IF(WIN32)
     IF(MSVC)
         SET(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} /NODEFAULTLIB:MSVCRT")
@@ -66,7 +72,6 @@ SET(LIB_PUBLIC_HEADERS
     CullingUtils
     DateTime
 	DateTimeRange
-    Decluttering
     DepthOffset
     DPLineSegmentIntersector
     DrapeableNode
@@ -88,6 +93,7 @@ SET(LIB_PUBLIC_HEADERS
     GeoMath
 	GeoTransform
     GeometryClamper
+    GLSLChunker
     HeightFieldUtils
     Horizon
     HTTPClient
@@ -135,6 +141,7 @@ SET(LIB_PUBLIC_HEADERS
     Random
     Registry
     Revisioning
+    ScreenSpaceLayout
     Shaders
     ShaderFactory
     ShaderGenerator
@@ -214,6 +221,7 @@ set(TARGET_SRC
     AutoScale.cpp
     Bounds.cpp
     Cache.cpp
+    CacheBin.cpp
     CacheEstimator.cpp
     CachePolicy.cpp
     CacheSeed.cpp
@@ -228,7 +236,6 @@ set(TARGET_SRC
     CullingUtils.cpp
     DateTime.cpp
 	DateTimeRange.cpp
-    Decluttering.cpp
     DepthOffset.cpp
     DPLineSegmentIntersector.cpp
     DrapeableNode.cpp
@@ -248,6 +255,7 @@ set(TARGET_SRC
     GeoMath.cpp
 	GeoTransform.cpp
     GeometryClamper.cpp
+    GLSLChunker.cpp
     HeightFieldUtils.cpp
     Horizon.cpp
     HTTPClient.cpp
@@ -290,6 +298,7 @@ set(TARGET_SRC
     Random.cpp
     Registry.cpp
     Revisioning.cpp
+    ScreenSpaceLayout.cpp
     ShaderFactory.cpp
     ShaderGenerator.cpp
     ShaderLoader.cpp
@@ -307,6 +316,7 @@ set(TARGET_SRC
     TerrainTileModel.cpp
     TerrainTileModelFactory.cpp
     Tessellator.cpp
+    TextureBufferSerializer.cpp
     TextureCompositor.cpp
     TileKey.cpp
     TileHandler.cpp
