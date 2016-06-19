@@ -169,6 +169,11 @@ to extruded buildings.
             <viewpoint name="Boston Street Level" heading="-145.64081" lat="42.364015" long="-71.054149" pitch="-9.701" range="144.95"/>
         </viewpoints>
         <sky driver="simple" hours="14.0"/>
+      <options lighting                 = "true"
+             elevation_interpolation  = "bilinear"
+             overlay_texture_size     = "4096"
+             overlay_blending         = "true"
+             overlay_resolution_ratio = "3.0" />
     </external>
   
 </map>

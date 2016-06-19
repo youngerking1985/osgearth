@@ -12,8 +12,20 @@ osgearth_viewer boston_buildings.earth --kml ../data/BostonBuildings.kmz
 
 <map name="Boston Demo" type="geocentric" version="2">
     
-    <image name="ReadyMap.org - Imagery" driver="tms">
-        <url>http://readymap.org/readymap/tiles/1.0.0/22/</url>
+    <image name="arcgis-world-imagery" driver="arcgis">
+        <url>http://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/</url>
+                <nodata_image>http://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/100/0/0.jpeg</nodata_image>
+                <cache_policy usage="no_cache"/>
+    </image>
+
+    <image name="arcgis-transportation" driver="arcgis" enabled="false">
+        <url>http://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer</url>
+                <cache_policy usage="no_cache"/>
+    </image>
+
+    <image name="arcgis-reference-overlay" driver="arcgis" enabled="false">
+        <url>http://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places_Alternate/MapServer</url>
+                <cache_policy usage="no_cache"/>
     </image>
       
     <model name="buildings" driver="feature_geom">
@@ -73,7 +85,7 @@ osgearth_viewer boston_buildings.earth --kml ../data/BostonBuildings.kmz
     
     
     <options>
-        <lighting>false</lighting>
+        <lighting>true</lighting>
     </options> 
     
     <external>
